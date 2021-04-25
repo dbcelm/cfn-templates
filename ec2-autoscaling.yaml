@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  AMIId:
+    NoEcho: 'false'
+    Description: AMI ID of the AMI which will be used to create launch configuration
+    Type: String
+
+  KeyPair:
+    NoEcho: 'false'
+    Description: Key Pair name which will be used to create launch configuration
+    Type: String
+
+  InstanceClass:
+    NoEcho: 'false'
+    Description: Instance class which will be used to create launch configuration 
+    Type: String
+    Default: t2.medium
+
+  EC2IAMRole:
+    NoEcho: 'false'
+    Description: ARN of the EC2 Instance role
+    Type: String
+
+  Environment:
+    NoEcho: 'false'
+    Description: name for the environment
+    Type: String
+    Default: Production
+  
+  EC2Tag:
+    NoEcho: 'false'
+    Description: Tag of name field for EC2
+    Type: String
+    
+  VPCID:
+    NoEcho: 'false'
+    Description: VPC Id of VPC to be used
+    Type: String
+
+  AZ1:
+    NoEcho: 'false'
+    Description: Availability Zone to be used 1
+    Type: String
+  
+  AZ2:
+    NoEcho: 'false'
+    Description: Availability Zone to be used 2
+    Type: String
+    
+  Subnet1:
+    NoEcho: 'false'
+    Description: Subnet to be used 1
+    Type: String
+  
+  Subnet2:
+    NoEcho: 'false'
+    Description: Subnet to be used 2
+    Type: String
+
+Resources:
+  ALBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow http and https to client host
+      GroupName: ALB_SecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0  
+  
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow HTTP requests from ALB
+      GroupName: EC2_SecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupName: !Ref ALBSecurityGroup
+          
+  ProjectLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      AssociatePublicIpAddress: "true"
+      IamInstanceProfile: !Ref EC2IAMRole
+      ImageId: !Ref AMIId
+      InstanceMonitoring: "false"
+      InstanceType: !Ref InstanceClass
+      KeyName: !Ref KeyPair
+      LaunchConfigurationName: "ProjectLaunchConfiguration"
+      SecurityGroups: 
+        - !Ref EC2SecurityGroup
+
+  ProjectALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckEnabled: "true"
+      HealthCheckPort: "80"
+      HealthCheckProtocol: "HTTP"
+      Name: ProjectALBTargetGroup
+      Port: "80"
+      Protocol: "HTTP"
+      ProtocolVersion: "HTTP1"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Ref EC2Tag
+      VpcId: !Ref VPCID
+
+
+  ProjectAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties: 
+      AutoScalingGroupName: ProjectAutoScalingGroup
+      AvailabilityZones:
+        - !Ref AZ1
+        - !Ref AZ2
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: "0"
+      HealthCheckType: EC2
+      LaunchConfigurationName: !Ref ProjectLaunchConfiguration
+      MaxSize: "5"
+      MinSize: "1"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: "true"
+        - Key: Name
+          Value: !Ref EC2Tag
+          PropagateAtLaunch: "true"  
+      TargetGroupARNs: 
+        - !Ref ProjectALBTargetGroup
+      TerminationPolicies: 
+        - OldestInstance
+      VPCZoneIdentifier:
+          - !Ref Subnet1
+          - !Ref Subnet2
+    DependsOn: ProjectALBTargetGroup  
+
+
+  ProjectASGCPUPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref ProjectAutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: "70"  
+
+
+  ProjectALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        - Type: forward
+          TargetGroupArn: !Ref ProjectALBTargetGroup
+      LoadBalancerArn: !Ref ProjectALB
+      Port: "80"
+      Protocol: "HTTP"
+    DependsOn: 
+      - ProjectALB
+      - ProjectALBTargetGroup
+
+
+  ProjectALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: "dualstack"
+      LoadBalancerAttributes: 
+        - Key: deletion_protection.enabled
+          Value: "true"
+      Name: "ProjectALB"
+      Scheme: "internet-facing"
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Subnets: 
+          - !Ref Subnet1
+          - !Ref Subnet2
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Ref EC2Tag
+      Type: "application"
