@@ -1,5 +1,5 @@
 <div align="center">
-### Cloudformation Templates for various use cases
+**Cloudformation Templates for various use cases**
 </div>
 
 ## ec2-autoscaling.yaml - 
