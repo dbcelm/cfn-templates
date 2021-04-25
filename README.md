@@ -6,4 +6,4 @@ Creates EC2 Auto Scaling Group along with target tracking scaling policy and app
 
 ## thumbnail-lambda-s3.yaml 
 Serverless application to generate thumbnails in web optimized format. Published on AWS SAM Marketplace and can be accessed from there. 
-# Name: "Thumbnail-JPG-Output"
+#### Name: "Thumbnail-JPG-Output"
