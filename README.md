@@ -1,5 +1,5 @@
 
-### Cloudformation Templates for various use cases
+# Cloudformation Templates for various use cases
 
 ## ec2-autoscaling.yaml
 Creates EC2 Auto Scaling Group along with target tracking scaling policy and application load balancer. Perfect to get started with a scalable backend application.
